@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import './styles.css'
 
 const START_YEAR = 2020
@@ -6,7 +6,6 @@ const END_YEAR = 2100
 const ROUNDS = 8
 const START_WIDTH = 50 // ft
 
-// Difficulty presets (baseline loss & starting budget)
 const DIFFICULTIES = {
   easy:   { label: 'Easy',   baseline: -8,  budget: 220 },
   normal: { label: 'Normal', baseline: -10, budget: 200 },
@@ -23,29 +22,113 @@ const OPTIONS = {
 }
 const ORDER = ['NOURISH','DUNES','REEF','SEAWALL','RETREAT','NONE']
 
-// Photo backgrounds (swap for your own anytime)
+/** Curated, subject-accurate photos (arrays so we can failover reliably).
+ *  We’ll render these with a real <img/> + onError fallback so they don’t go black.
+ */
 const MOVE_BG = {
-  NOURISH:  'https://images.unsplash.com/photo-1533636721434-0e2d61030955?q=80&w=1600&auto=format&fit=crop',
-  DUNES:    'https://images.unsplash.com/photo-1519046904884-53103b34b206?q=80&w=1600&auto=format&fit=crop',
-  REEF:     'https://images.unsplash.com/photo-1501117716987-c8eab02b8cc2?q=80&w=1600&auto=format&fit=crop',
-  SEAWALL:  'https://images.unsplash.com/photo-1544551763-7ef4200b69c3?q=80&w=1600&auto=format&fit=crop',
-  RETREAT:  'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=1600&auto=format&fit=crop',
-  NONE:     'https://images.unsplash.com/photo-1503435824048-a799a3a84bf7?q=80&w=1600&auto=format&fit=crop',
+  NOURISH: [
+    // bulldozer/pipeline placing sand
+    'https://images.unsplash.com/photo-1502404768591-9046a3c9a470?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?beach,bulldozer,sand',
+    'https://source.unsplash.com/1600x900/?beach,nourishment'
+  ],
+  DUNES: [
+    // vegetated foredunes / fencing on dunes
+    'https://images.unsplash.com/photo-1496439786094-e697f0f1ac75?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?sand-dunes,grass,fence',
+    'https://source.unsplash.com/1600x900/?dune,restoration'
+  ],
+  REEF: [
+    // artificial reef: reef-balls/underwater structures
+    'https://images.unsplash.com/photo-1517957589572-1f54a34a8daa?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?reef,artificial,underwater',
+    'https://source.unsplash.com/1600x900/?reef-balls'
+  ],
+  SEAWALL: [
+    // riprap / concrete revetment
+    'https://images.unsplash.com/photo-1516110998306-4b3f0b4a3f84?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?seawall,breakwater,rocks',
+    'https://source.unsplash.com/1600x900/?revetment,riprap'
+  ],
+  RETREAT: [
+    // coastal homes set back / moving inland
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?coastal,houses,shore',
+    'https://source.unsplash.com/1600x900/?managed,retreat'
+  ],
+  NONE: [
+    // neutral ocean (used only for the “do nothing” move card)
+    'https://images.unsplash.com/photo-1503435824048-a799a3a84bf7?q=80&w=1600&auto=format&fit=crop',
+    'https://source.unsplash.com/1600x900/?ocean,waves,coast',
+    'https://source.unsplash.com/1600x900/?sea'
+  ],
+}
+
+/** Wild-card images, subject-accurate + fallbacks */
+const WILDCARD_IMGS = {
+  STORM: [
+    'https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?q=80&w=2000&auto=format&fit=crop',
+    'https://source.unsplash.com/2000x1200/?storm,coast,wave',
+    'https://source.unsplash.com/2000x1200/?storm-surge,beach'
+  ],
+  RECALL: [
+    'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=2000&auto=format&fit=crop',
+    'https://source.unsplash.com/2000x1200/?city-hall,meeting,vote',
+    'https://source.unsplash.com/2000x1200/?ballot,recall,policy'
+  ],
+  LA_NINA: [
+    'https://images.unsplash.com/photo-1501959915551-4e8a04a2b59a?q=80&w=2000&auto=format&fit=crop',
+    'https://source.unsplash.com/2000x1200/?calm,sea,blue-ocean',
+    'https://source.unsplash.com/2000x1200/?ocean,glassy'
+  ],
+  KING_TIDE: [
+    'https://images.unsplash.com/photo-1522512115668-c09775d6f424?q=80&w=2000&auto=format&fit=crop',
+    'https://source.unsplash.com/2000x1200/?flood,street,coast',
+    'https://source.unsplash.com/2000x1200/?king-tide,flooding'
+  ],
+  EMISSIONS: [
+    'https://images.unsplash.com/photo-1545259741-2ea3ebf61fa7?q=80&w=2000&auto=format&fit=crop',
+    'https://source.unsplash.com/2000x1200/?wind-turbines,renewable',
+    'https://source.unsplash.com/2000x1200/?solar,renewable,energy'
+  ],
 }
 
 const WILDCARDS = [
-  { key: 'STORM',     name: '100-Year Storm',     text: 'A powerful storm slams the coast.',                    img: 'https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?q=80&w=2000&auto=format&fit=crop' },
-  { key: 'RECALL',    name: 'Recall',             text: 'Your policy decision is overturned.',                 img: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?q=80&w=2000&auto=format&fit=crop' },
-  { key: 'LA_NINA',   name: 'La Niña Year',       text: 'Unusually calm ocean conditions this year.',          img: 'https://images.unsplash.com/photo-1501959915551-4e8a04a2b59a?q=80&w=2000&auto=format&fit=crop' },
-  { key: 'KING_TIDE', name: 'King Tide Flooding', text: 'Extreme high tides flood streets and infrastructure.', img: 'https://images.unsplash.com/photo-1522512115668-c09775d6f424?q=80&w=2000&auto=format&fit=crop' },
-  { key: 'EMISSIONS', name: 'Emissions Reduction',text: 'Global shift lowers long-term sea-level rise rate.',  img: 'https://images.unsplash.com/photo-1545259741-2ea3ebf61fa7?q=80&w=2000&auto=format&fit=crop' },
+  { key: 'STORM',     name: '100-Year Storm',     text: 'A powerful storm slams the coast.' },
+  { key: 'RECALL',    name: 'Recall',             text: 'Your policy decision is overturned.' },
+  { key: 'LA_NINA',   name: 'La Niña Year',       text: 'Unusually calm ocean conditions this year.' },
+  { key: 'KING_TIDE', name: 'King Tide Flooding', text: 'Extreme high tides flood streets and infrastructure.' },
+  { key: 'EMISSIONS', name: 'Emissions Reduction',text: 'Global shift lowers long-term sea-level rise rate.' },
 ]
 
 function prettyMoney(m){ return `$${m.toFixed(0)}M` }
 
+/** Small image component with robust onError fallbacks */
+function PhotoBG({srcs, className}) {
+  const [idx, setIdx] = useState(0)
+  const src = srcs[Math.min(idx, srcs.length - 1)]
+  return (
+    <img
+      className={className}
+      src={src}
+      alt=""
+      onError={()=> setIdx(i => (i < srcs.length - 1 ? i + 1 : i))}
+      loading="lazy"
+      decoding="async"
+    />
+  )
+}
+
 export default function App(){
   const [difficulty, setDifficulty] = useState('normal')
   const [selected, setSelected] = useState('NOURISH')
+  const [showIntro, setShowIntro] = useState(false)
+
+  useEffect(() => {
+    // Show intro once unless user hid it
+    const hide = typeof window !== 'undefined' && localStorage.getItem('stb_hide_intro') === '1'
+    setShowIntro(!hide)
+  }, [])
 
   function initialState(diffKey = difficulty){
     const diff = DIFFICULTIES[diffKey]
@@ -54,11 +137,11 @@ export default function App(){
       round: 1,
       width: START_WIDTH,
       budget: diff.budget,
-      baseBaseline: diff.baseline, // –8/–10/–12; EMISSIONS may improve to –5
+      baseBaseline: diff.baseline, // –8/–10/–12; EMISSIONS can improve to –5
       reefBuilt: false,
-      reefRoundsLeft: 0,    // 3 rounds when built
+      reefRoundsLeft: 0,
       seawallBuilt: false,
-      retreatRoundsLeft: 0, // 3 rounds when chosen
+      retreatRoundsLeft: 0,
       lastRate: null,
       lastBaseRate: null,
       log: [`Start ${START_YEAR}: Beach=${START_WIDTH} ft, Budget=${prettyMoney(diff.budget)}, Baseline ${diff.baseline} ft/dec.`],
@@ -69,8 +152,6 @@ export default function App(){
     }
   }
   const [s, setS] = useState(initialState())
-
-  // Wild-card modal state
   const [wildModal, setWildModal] = useState(null)
 
   const badge = s.gameOver
@@ -108,7 +189,7 @@ export default function App(){
           cost -= OPTIONS.REEF.cost
           notes.push('Built Artificial Reef: base loss becomes –5 ft/dec for 30 years.')
           if (state.retreatRoundsLeft === 0 && !state.seawallBuilt){
-            rate = Math.max(baseRate, -5)
+            rate = Math.max(baseRate, -5) // immediate effect this decade
           }
         } else {
           notes.push(state.reefRoundsLeft > 0 ? 'Reef already active.' : 'Reef effect ended.')
@@ -118,7 +199,7 @@ export default function App(){
       }
       case 'SEAWALL':
         if (!state.seawallBuilt){
-          cost -= OPTIONS.SEAWALL.cost
+          cost -= OPTIONS.SEWALL?.cost || OPTIONS.SEAWALL.cost
           notes.push('Built Seawall: base loss becomes –20 ft/dec permanently.')
         } else {
           notes.push('Seawall already built.')
@@ -166,7 +247,7 @@ export default function App(){
         }
         break
       case 'LA_NINA':
-        widthChangeFromWild = -rate
+        widthChangeFromWild = -rate  // cancels whatever the rate was
         rate = 0
         why = 'Cooler equatorial Pacific → calmer wave climate → minimal erosion.'
         notes.push('La Niña → 0 ft change this decade.')
@@ -178,9 +259,15 @@ export default function App(){
         notes.push('King Tide → –$30M budget immediately.')
         break
       case 'EMISSIONS':
-        futureNote = 'Baseline improves to –5 ft/decade from now on (long-term benefit).'
-        why = 'Rapid decarbonization slows sea-level rise and wave energy over time.'
-        notes.push('Emissions cut → baseline improves to –5 ft/decade from now on.')
+        // ✅ Apply the improvement IMMEDIATELY this decade (so you see –5, not –10)
+        {
+          const before = rate
+          rate = Math.max(rate, -5)
+          widthChangeFromWild = rate - before
+          why = 'Rapid decarbonization slows sea-level rise and wave energy starting now.'
+          futureNote = 'Baseline set to –5 ft/decade from now on.'
+          notes.push('Emissions cut → baseline improves to –5 ft/decade immediately and going forward.')
+        }
         break
     }
 
@@ -227,7 +314,7 @@ export default function App(){
       cost += applied.cost
       notes = [...notes, ...applied.notes]
       wildExtras = applied
-      if (drawn.key === 'EMISSIONS') baseBaseline = Math.max(baseBaseline, -5)
+      if (drawn.key === 'EMISSIONS') baseBaseline = Math.max(baseBaseline, -5) // persist improvement
     }
 
     const budgetDelta = cost
@@ -271,15 +358,15 @@ export default function App(){
     }
     setS(nextState)
 
-    // Show wild-card modal
     if (drawn && wildExtras){
       const widthChangeThisDecade = rate
       const widthFromWild = wildExtras.widthChangeFromWild || 0
       const budgetFromWild = wildExtras.budgetChange || 0
       setWildModal({
+        key: drawn.key,
         name: drawn.name,
         text: drawn.text,
-        img: drawn.img,
+        imgs: WILDCARD_IMGS[drawn.key],
         widthChangeThisDecade,
         widthFromWild,
         budgetChangeThisDecade: budgetDelta,
@@ -301,11 +388,11 @@ export default function App(){
     setWildModal(null)
   }
 
-  // Beach visual width mapping
+  // Top-down beach visual: map 50 ft => 50% sand; clamp 0–100%
   const sandPct = Math.max(0, Math.min(100, (s.width/START_WIDTH)*50))
 
   const EndScreen = () => (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop strong">
       <div className="modal">
         <h2 style={{marginTop:0}}>{s.victory ? 'You finished the plan! 🏖️' : 'Game over 😞'}</h2>
         <p>Final year: {s.year}. Width: {s.width} ft. Budget: {prettyMoney(s.budget)}.</p>
@@ -318,18 +405,12 @@ export default function App(){
 
   const WildModal = () => {
     if (!wildModal) return null
-    const {
-      name, text, img, why, futureNote,
-      widthChangeThisDecade, widthFromWild,
-      budgetChangeThisDecade, budgetFromWild,
-      decadeRange, newWidth, newBudget
-    } = wildModal
-
-    // Less text, big visual; details tucked away
+    const { name, text, imgs, why, futureNote, widthChangeThisDecade, widthFromWild, budgetChangeThisDecade, budgetFromWild } = wildModal
+    const bg = `linear-gradient(to top, rgba(0,0,0,.5), rgba(0,0,0,.15)), ${imgs.map(u=>`url('${u}')`).join(', ')}`
     return (
       <div className="modal-backdrop strong">
         <div className="wild-frame pop">
-          <div className="wild-photo" style={{ backgroundImage: `url('${img}')` }} />
+          <div className="wild-photo" style={{ backgroundImage: bg }} />
           <div className="wild-sheet">
             <div className="wild-title">{name}</div>
             <div className="wild-sub">{text}</div>
@@ -368,17 +449,14 @@ export default function App(){
 
   return (
     <div className="container">
-      <div className="header">
-        <div>
-          <div className="title">Save the Beach!</div>
-          <div style={{color:'#475569', fontSize:12}}>
-            Survive to {END_YEAR} without the beach or the budget hitting zero.
-          </div>
-        </div>
+      {/* CENTERED, BIG TITLE */}
+      <div className="masthead">
+        <div className="mast-title">Save the Beach!</div>
+        <div className="mast-sub">Survive to {END_YEAR} without the beach or the budget hitting zero.</div>
         {badge}
       </div>
 
-      {/* Settings: Difficulty + Undo */}
+      {/* Settings */}
       <div className="card" style={{marginBottom:16}}>
         <div className="header"><h3>Settings</h3></div>
         <div className="content" style={{display:'flex', gap:12, flexWrap:'wrap', alignItems:'center'}}>
@@ -386,10 +464,7 @@ export default function App(){
             <div style={{fontSize:12, color:'#64748b'}}>Difficulty</div>
             <div style={{display:'flex', gap:6}}>
               {Object.entries(DIFFICULTIES).map(([key, cfg])=>(
-                <button
-                  key={key}
-                  className={key===difficulty ? 'primary' : 'btn'}
-                  onClick={()=>{ setDifficulty(key); resetGame(key) }}>
+                <button key={key} className={key===difficulty ? 'primary' : 'btn'} onClick={()=>{ setDifficulty(key); resetGame(key) }}>
                   {cfg.label}
                 </button>
               ))}
@@ -427,7 +502,7 @@ export default function App(){
           </div>
         </div>
 
-        {/* ACTIONS (photo backgrounds inline) */}
+        {/* ACTIONS (photo backgrounds with reliable fallbacks using <img>) */}
         <div className="card">
           <div className="header"><h3>Choose Your Move</h3></div>
           <div className="content">
@@ -435,18 +510,15 @@ export default function App(){
               {ORDER.map(key => {
                 const o = OPTIONS[key]
                 const isSel = selected === key
-                const bg = MOVE_BG[key]
+                const srcs = MOVE_BG[key]
                 return (
                   <div
                     key={key}
                     className={'option-card photo' + (isSel ? ' selected' : '')}
                     onClick={()=>!s.gameOver && setSelected(key)}
-                    style={{
-                      backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,.15), rgba(0,0,0,.55)), url('${bg}')`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center'
-                    }}
                   >
+                    <PhotoBG className="option-photo" srcs={srcs} />
+                    <div className="option-overlay" />
                     <div className="option-top">
                       <div className="option-title">{o.title}</div>
                       <div className="cost-pill">{o.cost > 0 ? `–$${o.cost}M` : '—'}</div>
@@ -467,15 +539,33 @@ export default function App(){
       {/* LOG */}
       <div className="card" style={{marginTop:16}}>
         <div className="header"><h3>Decade Log</h3></div>
-        <div className="content">
-          <div className="log">
-            {s.log.map((entry,i)=>(<div key={i} className="log-entry">{entry}</div>))}
-          </div>
-        </div>
+        <div className="content"><div className="log">{s.log.map((e,i)=>(<div key={i} className="log-entry">{e}</div>))}</div></div>
       </div>
 
       {s.gameOver && <EndScreen/>}
       <WildModal/>
+
+      {/* Intro (skippable) */}
+      {showIntro && (
+        <div className="modal-backdrop strong">
+          <div className="intro-modal pop">
+            <div className="intro-title">How to play</div>
+            <ul className="intro-list">
+              <li>Pick one move each decade.</li>
+              <li>Beach width changes by the decade’s rate.</li>
+              <li>If Beach ≤ 0 ft or Budget ≤ $0M → you lose.</li>
+              <li>Make it to {END_YEAR} with both above zero → you win!</li>
+            </ul>
+            <div className="intro-actions">
+              <label className="intro-check">
+                <input type="checkbox" onChange={(e)=> localStorage.setItem('stb_hide_intro', e.target.checked ? '1' : '0')} />
+                Don’t show again
+              </label>
+              <button className="primary" onClick={()=> setShowIntro(false)}>Start</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
